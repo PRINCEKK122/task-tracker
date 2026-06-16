@@ -5,8 +5,15 @@ import fs from "fs";
 const args = process.argv.slice(2);
 const [command, ...rest] = args;
 
-if (!fs.existsSync("tasks.json")) {
-  fs.writeFileSync("tasks.json", JSON.stringify({tasks: []}), "utf8");
+const STATUSES = {
+  todo: "todo",
+  inProgress: "in-progress",
+  done: "done",
+};
+const FILE = "tasks.json";
+
+if (!fs.existsSync(FILE)) {
+  fs.writeFileSync(FILE, JSON.stringify({ tasks: [] }, null, 2), "utf8");
 }
 
 const displayMenu = () => {
@@ -17,35 +24,34 @@ const displayMenu = () => {
 };
 
 const add = (description) => {
-  try {
-    if (!description) {
-      throw new Error("Description is required.");
-    }
-
-    const newData = {
-      description,
-      status: "todo",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const fileContent = fs.readFileSync("tasks.json", "utf8");
-
-    let data;
-    if (fileContent.length > 0) {
-      data = JSON.parse(fileContent);
-      data.tasks.push({ id: data.tasks.length + 1, ...newData });
-    } else {
-      data = {
-        tasks: [{ id: 1, ...newData }],
-      };
-    }
-    fs.writeFileSync("tasks.json", JSON.stringify(data), "utf8");
-    // console.log(data.tasks);
-  } catch (err) {
-    console.log("error", err.message);
+  if (!description) {
+    throw new Error("Description is required.");
   }
 
+  const contents = fs.readFileSync(FILE, "utf8");
+  const data = JSON.parse(contents);
+
+  let nextId;
+
+  if (data.tasks.length > 0) {
+    const taskIds = data.tasks.map(({ id }) => id);
+    nextId = Math.max(...taskIds) + 1;
+  } else {
+    nextId = 1;
+  }
+
+  const now = new Date().toISOString();
+  const newData = {
+    id: nextId,
+    description,
+    status: STATUSES.todo,
+    createdAt: now,
+    updatedAt: now,
+  };
+  data.tasks.push(newData);
+
+  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
+  console.log(`Task added successfully (ID: ${newData.id})`);
 };
 
 const update = (id, description) => {
@@ -53,7 +59,18 @@ const update = (id, description) => {
 };
 
 const remove = (id) => {
-  console.log("delete task with id", id);
+  const content = fs.readFileSync(FILE, "utf8");
+  const data = JSON.parse(content);
+  const taskIds = data.tasks.map((task) => task.id);
+
+  if (!taskIds.includes(id)) {
+    console.log(`Task with ID: ${id} does not exist!`);
+    return;
+  }
+
+  data.tasks = data.tasks.filter((task) => task.id !== id);
+  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
+  console.log(`Task removed successfully (ID: ${id})`);
 };
 
 if (!command) {
@@ -61,24 +78,31 @@ if (!command) {
   process.exit(1);
 }
 
-let description, id;
-switch (command) {
-  case "add":
-    description = rest[0];
-    add(description);
-    break;
-  case "update":
-    id = rest[0];
-    description = rest[1];
-    update(id, description);
-    break;
-  case "delete":
-    id = rest[0];
-    remove(id);
-    break;
-  case "list":
-    console.log("All tasks");
-    break;
-  default:
-    console.log("invalid command!");
+try {
+  switch (command) {
+    case "add": {
+      const description = rest[0];
+      add(description);
+      break;
+    }
+    case "update": {
+      const id = rest[0];
+      const description = rest[1];
+      update(id, description);
+      break;
+    }
+    case "delete": {
+      const id = Number(rest[0]);
+      remove(id);
+      break;
+    }
+    case "list":
+      console.log("All tasks");
+      break;
+    default:
+      console.log("invalid command!");
+  }
+} catch (err) {
+  if (err.code === "ENOENT") console.error("File missing", err.message);
+  else console.error("error:", err.message);
 }
