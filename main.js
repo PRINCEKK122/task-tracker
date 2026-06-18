@@ -10,11 +10,6 @@ const STATUSES = Object.freeze({
   inProgress: "in-progress",
   done: "done",
 });
-const LIST_STATUSES = Object.freeze({
-  done: "done",
-  todo: "todo",
-  inProgress: "in-progress",
-});
 const FILE = "tasks.json";
 
 const getData = () => {
@@ -35,13 +30,6 @@ const displayMenu = () => {
   console.log("task-cli add <task>            : Add a new task");
   console.log("task-cli update <id> <task>    : Update a task");
   console.log("task-cli delete <id>           : Delete a task");
-};
-
-const checkIdIfExists = (id) => {
-  const data = getData();
-  const taskIds = data.tasks.map((task) => task.id);
-
-  return taskIds.includes(id);
 };
 
 const handleErr = (err) => {
@@ -81,17 +69,16 @@ const add = (description) => {
 };
 
 const update = (id, description) => {
-  if (!checkIdIfExists(id)) {
-    console.log(`Task with ID: ${id} does not exist!`);
-    return;
-  }
-
   if (!description) {
     throw new Error("Description is required.");
   }
 
   const data = getData();
-  const task = data.tasks.find((task) => task.id === id);
+  const task = data.tasks.find((t) => t.id === id);
+  if (!task) {
+    console.log(`Task with ID: ${id} does not exist!`);
+    return;
+  }
 
   task.description = description;
   task.updatedAt = new Date().toISOString();
@@ -101,13 +88,14 @@ const update = (id, description) => {
 };
 
 const remove = (id) => {
-  if (!checkIdIfExists(id)) {
+  const data = getData();
+  const task = data.tasks.find((t) => t.id === id);
+  if (!task) {
     console.log(`Task with ID: ${id} does not exist!`);
     return;
   }
 
-  const data = getData();
-  data.tasks = data.tasks.filter((task) => task.id !== id);
+  data.tasks = data.tasks.filter((t) => t.id !== id);
   writeDataToFile(data);
   console.log(`Task removed successfully (ID: ${id})`);
 };
@@ -117,22 +105,38 @@ const list = (status) => {
 
   if (
     status !== "" &&
-    !Object.values(LIST_STATUSES).includes(status.toLowerCase())
+    !Object.values(STATUSES).includes(status.toLowerCase())
   ) {
     throw new Error("Status should be either done, todo or in-progress");
   }
 
-  const task =
+  const tasks =
     status === ""
       ? data.tasks
-      : data.tasks.filter((task) => task.status === status.toLowerCase());
-  task.forEach((task) => {
+      : data.tasks.filter((t) => t.status === status.toLowerCase());
+  tasks.forEach((t) => {
     console.log(
-      `ID: ${task.id}; Description: ${task.description}; Status: ${task.status}`,
+      `ID: ${t.id}; Description: ${t.description}; Status: ${t.status}`,
     );
   });
 };
 
+const changeTaskStatus = (id, newStatus) => {
+  const data = getData();
+  const task = data.tasks.find((t) => t.id === id);
+  if (!task) {
+    console.log(`Task with ID: ${id} does not exist!`);
+    return;
+  }
+
+  const oldStatus = task.status;
+  task.status = newStatus;
+  task.updatedAt = new Date().toISOString();
+  writeDataToFile(data);
+  console.log(
+    `Task with ID: ${id} changed from status ${oldStatus} to ${newStatus}.`,
+  );
+};
 
 // Init
 if (!command || command === "help") {
@@ -141,7 +145,7 @@ if (!command || command === "help") {
 }
 
 try {
-  switch (command) {
+  switch (command.toLowerCase()) {
     case "add": {
       const description = rest[0];
       add(description);
@@ -158,16 +162,25 @@ try {
       remove(id);
       break;
     }
-    case "list":
+    case "list": {
       const status = typeof rest[0] === "string" ? rest[0] : "";
       list(status);
       break;
+    }
     case "mark-in-progress":
-
-    default:
+    case "mark-todo":
+    case "mark-done": {
+      const taskId = rest[0];
+      const index = command.indexOf("-");
+      const newStatus = command.substring(index + 1);
+      changeTaskStatus(Number(taskId), newStatus);
+      break;
+    }
+    default: {
       console.log("invalid command!");
       displayMenu();
       break;
+    }
   }
 } catch (err) {
   handleErr(err);
