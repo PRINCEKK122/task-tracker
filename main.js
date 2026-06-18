@@ -5,15 +5,29 @@ import fs from "fs";
 const args = process.argv.slice(2);
 const [command, ...rest] = args;
 
-const STATUSES = {
+const STATUSES = Object.freeze({
   todo: "todo",
   inProgress: "in-progress",
   done: "done",
-};
+});
+const LIST_STATUSES = Object.freeze({
+  done: "done",
+  todo: "todo",
+  inProgress: "in-progress",
+});
 const FILE = "tasks.json";
 
+const getData = () => {
+  const content = fs.readFileSync(FILE, "utf8");
+  return JSON.parse(content);
+};
+
+const writeDataToFile = (data) => {
+  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
+};
+
 if (!fs.existsSync(FILE)) {
-  fs.writeFileSync(FILE, JSON.stringify({ tasks: [] }, null, 2), "utf8");
+  writeDataToFile({ tasks: [] });
 }
 
 const displayMenu = () => {
@@ -23,13 +37,25 @@ const displayMenu = () => {
   console.log("task-cli delete <id>           : Delete a task");
 };
 
+const checkIdIfExists = (id) => {
+  const data = getData();
+  const taskIds = data.tasks.map((task) => task.id);
+
+  return taskIds.includes(id);
+};
+
+const handleErr = (err) => {
+  if (err.code === "ENOENT") console.error("File missing", err.message);
+  else console.error("error:", err.message);
+};
+
+// Commands
 const add = (description) => {
   if (!description) {
     throw new Error("Description is required.");
   }
 
-  const contents = fs.readFileSync(FILE, "utf8");
-  const data = JSON.parse(contents);
+  const data = getData();
 
   let nextId;
 
@@ -50,30 +76,66 @@ const add = (description) => {
   };
   data.tasks.push(newData);
 
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
+  writeDataToFile(data);
   console.log(`Task added successfully (ID: ${newData.id})`);
 };
 
 const update = (id, description) => {
-  console.log("updating task with id", id, description);
-};
-
-const remove = (id) => {
-  const content = fs.readFileSync(FILE, "utf8");
-  const data = JSON.parse(content);
-  const taskIds = data.tasks.map((task) => task.id);
-
-  if (!taskIds.includes(id)) {
+  if (!checkIdIfExists(id)) {
     console.log(`Task with ID: ${id} does not exist!`);
     return;
   }
 
+  if (!description) {
+    throw new Error("Description is required.");
+  }
+
+  const data = getData();
+  const task = data.tasks.find((task) => task.id === id);
+
+  task.description = description;
+  task.updatedAt = new Date().toISOString();
+  writeDataToFile(data);
+
+  console.log(`Task with ID: ${id} has been updated successfully!`);
+};
+
+const remove = (id) => {
+  if (!checkIdIfExists(id)) {
+    console.log(`Task with ID: ${id} does not exist!`);
+    return;
+  }
+
+  const data = getData();
   data.tasks = data.tasks.filter((task) => task.id !== id);
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8");
+  writeDataToFile(data);
   console.log(`Task removed successfully (ID: ${id})`);
 };
 
-if (!command) {
+const list = (status) => {
+  const data = getData();
+
+  if (
+    status !== "" &&
+    !Object.values(LIST_STATUSES).includes(status.toLowerCase())
+  ) {
+    throw new Error("Status should be either done, todo or in-progress");
+  }
+
+  const task =
+    status === ""
+      ? data.tasks
+      : data.tasks.filter((task) => task.status === status.toLowerCase());
+  task.forEach((task) => {
+    console.log(
+      `ID: ${task.id}; Description: ${task.description}; Status: ${task.status}`,
+    );
+  });
+};
+
+
+// Init
+if (!command || command === "help") {
   displayMenu();
   process.exit(1);
 }
@@ -86,7 +148,7 @@ try {
       break;
     }
     case "update": {
-      const id = rest[0];
+      const id = Number(rest[0]);
       const description = rest[1];
       update(id, description);
       break;
@@ -97,12 +159,16 @@ try {
       break;
     }
     case "list":
-      console.log("All tasks");
+      const status = typeof rest[0] === "string" ? rest[0] : "";
+      list(status);
       break;
+    case "mark-in-progress":
+
     default:
       console.log("invalid command!");
+      displayMenu();
+      break;
   }
 } catch (err) {
-  if (err.code === "ENOENT") console.error("File missing", err.message);
-  else console.error("error:", err.message);
+  handleErr(err);
 }
